@@ -12,5 +12,10 @@ let package = Package(
                 .linkedLibrary("sqlite3"),
             ]
         ),
+        .testTarget(
+            name: "HerdCodeTests",
+            dependencies: ["HerdCode"],
+            path: "Tests/HerdCodeTests"
+        ),
     ]
 )

@@ -7,8 +7,8 @@ final class StatusMonitor: ObservableObject {
     @Published var state = AppState()
     @Published var lastError: String?
 
-    private let herdr = HerdrService()
-    private let opencode = OpencodeService()
+    private let herdr: HerdrService
+    private let opencode: OpencodeService
 
     private var timer: Timer?
     private let pollInterval: TimeInterval
@@ -16,8 +16,44 @@ final class StatusMonitor: ObservableObject {
     private var previousOverallStatus: AgentStatus = .unknown
     private var previousWorkingCount: Int = 0
 
-    init(pollInterval: TimeInterval = 5.0) {
+    init(pollInterval: TimeInterval = 5.0, herdrService: HerdrService? = nil) {
         self.pollInterval = pollInterval
+        self.herdr = herdrService ?? HerdrService()
+        self.opencode = OpencodeService()
+    }
+
+    convenience init(herdrService: HerdrService, pollInterval: TimeInterval = 5.0) {
+        self.init(pollInterval: pollInterval, herdrService: herdrService)
+    }
+
+    func rowState(for agent: HerdrAgent) -> AgentRowState {
+        TerminalJumpResolver.rowState(for: agent)
+    }
+
+    func rowState(for session: OpencodeSession) -> AgentRowState {
+        TerminalJumpResolver.rowState(for: session, agents: state.herdrAgents)
+    }
+
+    // Jump errors are surfaced via lastError (best-effort; may be overwritten by the next poll cycle).
+    // The authoritative jump-failure log line is written by JumpLogger with prefix [HerdCodeJumpError].
+    func jumpToAgent(_ agent: HerdrAgent) async {
+        let target = rowState(for: agent).focusTarget
+        guard let paneId = target else { return }
+        do {
+            try await herdr.focusPane(paneId)
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    func jumpToSession(_ session: OpencodeSession) async {
+        let target = rowState(for: session).focusTarget
+        guard let paneId = target else { return }
+        do {
+            try await herdr.focusPane(paneId)
+        } catch {
+            lastError = error.localizedDescription
+        }
     }
 
     func start() {

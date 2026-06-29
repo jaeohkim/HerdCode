@@ -86,7 +86,9 @@ struct MenuBarView: View {
                     emptyRow("agent 없음")
                 } else {
                     ForEach(monitor.state.herdrAgents) { agent in
-                        HerdrAgentRow(agent: agent, fontScale: fontScale)
+                        HerdrAgentRow(agent: agent, fontScale: fontScale) {
+                            Task { await monitor.jumpToAgent(agent) }
+                        }
                     }
                 }
             }
@@ -134,7 +136,13 @@ struct MenuBarView: View {
                     emptyRow("활성 세션 없음")
                 } else {
                     ForEach(monitor.state.opencodeSessions) { session in
-                        OpencodeSessionRow(session: session, fontScale: fontScale)
+                        OpencodeSessionRow(
+                            session: session,
+                            fontScale: fontScale,
+                            onTap: monitor.rowState(for: session).isEnabled
+                                ? { Task { await monitor.jumpToSession(session) } }
+                                : nil
+                        )
                     }
                 }
             }
@@ -247,24 +255,34 @@ struct MenuBarView: View {
 private struct HerdrAgentRow: View {
     let agent: HerdrAgent
     let fontScale: Double
+    let onTap: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(agent.status == .working ? Color.green : Color.gray.opacity(0.4))
-                .frame(width: 7, height: 7)
-            Text(agent.agent)
-                .font(.system(size: 13 * fontScale))
-            Spacer()
-            Text(agent.status.label)
-                .font(.system(size: 11 * fontScale))
-                .foregroundStyle(agent.status == .working ? .green : .secondary)
-            Text(shortPath(agent.cwd))
-                .font(.system(size: 10 * fontScale))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+        let rowState = TerminalJumpResolver.rowState(for: agent)
+        Button {
+            onTap?()
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(agent.status == .working ? Color.green : Color.gray.opacity(0.4))
+                    .frame(width: 7, height: 7)
+                Text(agent.agent)
+                    .font(.system(size: 13 * fontScale))
+                Spacer()
+                Text(agent.status.label)
+                    .font(.system(size: 11 * fontScale))
+                    .foregroundStyle(agent.status == .working ? .green : .secondary)
+                Text(shortPath(agent.cwd))
+                    .font(.system(size: 10 * fontScale))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 2)
+        .buttonStyle(.plain)
+        .disabled(!rowState.isEnabled)
+        .help(rowState.isEnabled ? "" : rowState.helpText)
     }
 
     private func shortPath(_ path: String) -> String {
@@ -295,28 +313,37 @@ private struct HerdrSessionRow: View {
 private struct OpencodeSessionRow: View {
     let session: OpencodeSession
     let fontScale: Double
+    let onTap: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(session.isRecentlyActive ? Color.blue : Color.gray.opacity(0.3))
-                .frame(width: 7, height: 7)
-            Text(session.title)
-                .font(.system(size: 13 * fontScale))
-                .lineLimit(1)
-            Spacer()
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(relativeTime(session.timeUpdated))
-                    .font(.system(size: 10 * fontScale))
-                    .foregroundStyle(.tertiary)
-                if session.cost > 0 {
-                    Text(String(format: "$%.4f", session.cost))
+        Button {
+            onTap?()
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(session.isRecentlyActive ? Color.blue : Color.gray.opacity(0.3))
+                    .frame(width: 7, height: 7)
+                Text(session.title)
+                    .font(.system(size: 13 * fontScale))
+                    .lineLimit(1)
+                Spacer()
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(relativeTime(session.timeUpdated))
                         .font(.system(size: 10 * fontScale))
                         .foregroundStyle(.tertiary)
+                    if session.cost > 0 {
+                        Text(String(format: "$%.4f", session.cost))
+                            .font(.system(size: 10 * fontScale))
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
+            .padding(.vertical, 2)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, 2)
+        .buttonStyle(.plain)
+        .disabled(onTap == nil)
+        .help(onTap == nil ? "현재 연결된 terminal 없음" : "")
     }
 
     private func relativeTime(_ date: Date) -> String {
