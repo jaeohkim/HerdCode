@@ -8,18 +8,11 @@ struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 0) {
             headerSection
             Divider()
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    herdrSection
-                    Divider()
-                    opencodeSection
-                    if !monitor.state.opencodeTodos.isEmpty {
-                        Divider()
-                        todoSection
-                    }
-                }
+            VStack(alignment: .leading, spacing: 0) {
+                herdrSection
+                Divider()
+                opencodeSection
             }
-            .frame(maxHeight: 320)
             Divider()
             footerSection
         }
@@ -60,61 +53,93 @@ struct MenuBarView: View {
     // MARK: - Herdr Section
 
     private var herdrSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            sectionTitle("Herdr", count: monitor.state.runningHerdrSessionCount, total: monitor.state.herdrSessions.count)
+        VStack(alignment: .leading, spacing: 0) {
+            sectionTitle("Herdr", count: monitor.state.herdrAgents.filter { $0.status == .working }.count, total: monitor.state.herdrAgents.count + monitor.state.herdrSessions.count)
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+                .padding(.bottom, 2)
 
-            // Agent 상태 (활성인 것만)
-            ForEach(monitor.state.herdrAgents) { agent in
-                HerdrAgentRow(agent: agent)
+            VStack(alignment: .leading, spacing: 4) {
+                subSectionTitle("Agents", count: monitor.state.herdrAgents.filter { $0.status == .working }.count, total: monitor.state.herdrAgents.count)
+                if monitor.state.herdrAgents.isEmpty {
+                    emptyRow("agent 없음")
+                } else {
+                    ForEach(monitor.state.herdrAgents) { agent in
+                        HerdrAgentRow(agent: agent)
+                    }
+                }
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 2)
+            .padding(.bottom, 4)
 
-            // Session 목록
-            ForEach(monitor.state.herdrSessions) { session in
-                HerdrSessionRow(session: session)
-            }
+            Rectangle()
+                .fill(Color.primary.opacity(0.06))
+                .frame(height: 1)
+                .padding(.horizontal, 12)
 
-            if monitor.state.herdrAgents.isEmpty && monitor.state.herdrSessions.isEmpty {
-                emptyRow("herdr 세션 없음")
+            VStack(alignment: .leading, spacing: 4) {
+                subSectionTitle("Sessions", count: monitor.state.runningHerdrSessionCount, total: monitor.state.herdrSessions.count)
+                if monitor.state.herdrSessions.isEmpty {
+                    emptyRow("세션 없음")
+                } else {
+                    ForEach(monitor.state.herdrSessions) { session in
+                        HerdrSessionRow(session: session)
+                    }
+                }
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 4)
+            .padding(.bottom, 6)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
     }
 
     // MARK: - OpenCode Section
 
     private var opencodeSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 0) {
             sectionTitle(
                 "OpenCode",
                 count: monitor.state.activeOpencodeSessionCount,
                 total: monitor.state.opencodeSessions.count
             )
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
 
-            ForEach(monitor.state.opencodeSessions.prefix(5)) { session in
-                OpencodeSessionRow(session: session)
+            VStack(alignment: .leading, spacing: 4) {
+                subSectionTitle("Sessions", count: monitor.state.activeOpencodeSessionCount, total: monitor.state.opencodeSessions.count)
+                if monitor.state.opencodeSessions.isEmpty {
+                    emptyRow("활성 세션 없음")
+                } else {
+                    ForEach(monitor.state.opencodeSessions) { session in
+                        OpencodeSessionRow(session: session)
+                    }
+                }
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 2)
+            .padding(.bottom, 4)
 
-            if monitor.state.opencodeSessions.isEmpty {
-                emptyRow("활성 세션 없음")
+            if !monitor.state.opencodeTodos.isEmpty {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(height: 1)
+                    .padding(.horizontal, 12)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    subSectionTitle("Todos", count: monitor.state.inProgressTodoCount, total: monitor.state.opencodeTodos.count)
+                    ForEach(monitor.state.opencodeTodos.prefix(5)) { todo in
+                        TodoRow(todo: todo)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+                .padding(.bottom, 6)
+            } else {
+                Spacer().frame(height: 2)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-    }
-
-    // MARK: - TODO Section
-
-    private var todoSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            sectionTitle("진행 중 TODO", count: monitor.state.inProgressTodoCount)
-
-            ForEach(monitor.state.opencodeTodos.prefix(5)) { todo in
-                TodoRow(todo: todo)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
     }
 
     // MARK: - Footer
@@ -145,6 +170,26 @@ struct MenuBarView: View {
     }
 
     // MARK: - Helpers
+
+    private func subSectionTitle(_ title: String, count: Int? = nil, total: Int? = nil) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.caption2)
+                .fontWeight(.medium)
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+            if let count, let total {
+                Text("\(count)/\(total)")
+                    .font(.caption2)
+                    .foregroundStyle(Color.primary.opacity(0.25))
+            } else if let count {
+                Text("\(count)")
+                    .font(.caption2)
+                    .foregroundStyle(Color.primary.opacity(0.25))
+            }
+            Spacer()
+        }
+    }
 
     private func sectionTitle(_ title: String, count: Int? = nil, total: Int? = nil) -> some View {
         HStack(spacing: 4) {

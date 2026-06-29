@@ -8,7 +8,7 @@ final class FloatingPanelController {
         static let windowOriginKey = "HerdCode.windowOrigin"
         static let windowMargin: CGFloat = 12
         static let panelWidth: CGFloat = 340
-        static let panelHeight: CGFloat = 480
+        static let panelMaxHeightRatio: CGFloat = 0.85
     }
 
     private let monitor: StatusMonitor
@@ -56,7 +56,7 @@ final class FloatingPanelController {
         self.hostingController = hc
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: Constants.panelWidth, height: Constants.panelHeight),
+            contentRect: NSRect(x: 0, y: 0, width: Constants.panelWidth, height: 480),
             styleMask: [.titled, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -77,18 +77,31 @@ final class FloatingPanelController {
     }
 
     private func enforceSize(_ window: NSWindow) {
-        let current = window.frame
-        if abs(current.width - Constants.panelWidth) > 1 || abs(current.height - Constants.panelHeight) > 1 {
-            window.setContentSize(NSSize(width: Constants.panelWidth, height: Constants.panelHeight))
+        let preferred = hostingController?.preferredContentSize ?? .zero
+        let screen = window.screen ?? NSScreen.main ?? NSScreen.screens[0]
+        let maxH = screen.visibleFrame.height * Constants.panelMaxHeightRatio
+        let newHeight = preferred.height > 0 ? min(preferred.height, maxH) : window.frame.height
+        let newSize = NSSize(width: Constants.panelWidth, height: newHeight)
+        if abs(window.frame.width - newSize.width) > 1 || abs(window.frame.height - newSize.height) > 1 {
+            let origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - newSize.height)
+            window.setFrame(NSRect(origin: origin, size: newSize), display: true, animate: false)
         }
     }
 
+    private func currentPanelHeight() -> CGFloat {
+        let preferred = hostingController?.preferredContentSize.height ?? 0
+        let screen = screenForMouse() ?? NSScreen.main ?? NSScreen.screens[0]
+        let maxH = screen.visibleFrame.height * Constants.panelMaxHeightRatio
+        return preferred > 0 ? min(preferred, maxH) : 480
+    }
+
     private func targetWindowFrame() -> NSRect {
-        let size = NSSize(width: Constants.panelWidth, height: Constants.panelHeight)
+        let height = currentPanelHeight()
+        let size = NSSize(width: Constants.panelWidth, height: height)
         if let origin = restoredOrigin(), isOnScreen(origin: origin, size: size) {
             return NSRect(origin: origin, size: size)
         }
-        return topRightFrame()
+        return topRightFrame(height: height)
     }
 
     private func saveOrigin(_ window: NSWindow) {
@@ -109,12 +122,12 @@ final class FloatingPanelController {
         return NSScreen.screens.contains { $0.frame.contains(center) }
     }
 
-    private func topRightFrame() -> NSRect {
+    private func topRightFrame(height: CGFloat) -> NSRect {
         let screen = screenForMouse() ?? NSScreen.main ?? NSScreen.screens[0]
         let visible = screen.visibleFrame
         let x = visible.maxX - Constants.panelWidth - Constants.windowMargin
-        let y = visible.maxY - Constants.panelHeight - Constants.windowMargin
-        return NSRect(x: x, y: y, width: Constants.panelWidth, height: Constants.panelHeight)
+        let y = visible.maxY - height - Constants.windowMargin
+        return NSRect(x: x, y: y, width: Constants.panelWidth, height: height)
     }
 
     private func screenForMouse() -> NSScreen? {
