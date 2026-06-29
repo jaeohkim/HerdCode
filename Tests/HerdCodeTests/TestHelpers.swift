@@ -9,6 +9,14 @@ struct FakeJumpExecutor: JumpExecuting {
     }
 }
 
+struct FakeAppActivator: AppActivating {
+    let handler: @Sendable () async throws -> Void
+
+    func activate() async throws {
+        try await handler()
+    }
+}
+
 struct FakeFailure: LocalizedError {
     let message: String
 
@@ -25,5 +33,39 @@ final class TestJumpLogger: JumpLogging, @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         lines.append(message)
+    }
+}
+
+final class LockedEvents: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String] = []
+
+    func append(_ value: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        values.append(value)
+    }
+
+    func snapshot() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return values
+    }
+}
+
+final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = false
+
+    func setTrue() {
+        lock.lock()
+        defer { lock.unlock() }
+        storage = true
+    }
+
+    var value: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
     }
 }

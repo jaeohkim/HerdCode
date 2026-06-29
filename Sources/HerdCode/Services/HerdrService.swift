@@ -1,7 +1,33 @@
+import AppKit
 import Foundation
 
 protocol JumpExecuting: Sendable {
     func focusPane(_ paneId: String) async throws
+}
+
+protocol AppActivating: Sendable {
+    @MainActor
+    func activate() async throws
+}
+
+struct GhosttyNSWorkspaceActivator: AppActivating {
+    static let bundleId = "com.mitchellh.ghostty"
+
+    static func canActivate() -> Bool {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) != nil
+    }
+
+    @MainActor
+    func activate() async throws {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.bundleId) else {
+            throw HerdrError.activationFailed(bundleId: Self.bundleId, reason: "Application not found")
+        }
+
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+
+        try await NSWorkspace.shared.openApplication(at: url, configuration: config)
+    }
 }
 
 struct HerdrProcessJumpExecutor: JumpExecuting {
@@ -44,15 +70,18 @@ struct HerdrProcessJumpExecutor: JumpExecuting {
 actor HerdrService {
 
     private let herdrPath: String
+    private let appActivator: any AppActivating
     private let jumpExecutor: any JumpExecuting
     private let jumpLogger: any JumpLogging
 
     init(
         herdrPath: String = "/opt/homebrew/bin/herdr",
+        appActivator: (any AppActivating)? = nil,
         jumpExecutor: (any JumpExecuting)? = nil,
         jumpLogger: any JumpLogging = JumpLogger()
     ) {
         self.herdrPath = herdrPath
+        self.appActivator = appActivator ?? GhosttyNSWorkspaceActivator()
         self.jumpExecutor = jumpExecutor ?? HerdrProcessJumpExecutor(herdrPath: herdrPath)
         self.jumpLogger = jumpLogger
     }
@@ -80,6 +109,21 @@ actor HerdrService {
     }
 
     func focusPane(_ paneId: String) async throws {
+        do {
+            try await appActivator.activate()
+        } catch let error as HerdrError {
+            let jumpError = error.jumpError(for: paneId)
+            jumpLogger.log(jumpError.jumpLogMessage)
+            throw jumpError
+        } catch {
+            let jumpError = HerdrError.activationFailed(
+                bundleId: GhosttyNSWorkspaceActivator.bundleId,
+                reason: error.localizedDescription
+            ).jumpError(for: paneId)
+            jumpLogger.log(jumpError.jumpLogMessage)
+            throw jumpError
+        }
+
         do {
             try await jumpExecutor.focusPane(paneId)
         } catch let error as HerdrError {
@@ -152,6 +196,7 @@ actor HerdrService {
 enum HerdrError: LocalizedError {
     case invalidOutput
     case herdrNotFound(String)
+    case activationFailed(bundleId: String, reason: String)
     case jumpFailed(paneId: String, message: String, status: Int32?)
 
     var errorDescription: String? {
@@ -160,6 +205,8 @@ enum HerdrError: LocalizedError {
             return "herdr 명령 출력을 파싱할 수 없습니다."
         case .herdrNotFound(let path):
             return "herdr를 찾을 수 없습니다: \(path)"
+        case .activationFailed(let bundleId, let reason):
+            return "앱 활성화 실패 (bundleId=\(bundleId)): \(reason)"
         case .jumpFailed(let paneId, let message, let status):
             if let status {
                 return "pane \(paneId) 포커스 이동 실패 (exit=\(status)): \(message)"
@@ -170,7 +217,7 @@ enum HerdrError: LocalizedError {
 
     func jumpError(for paneId: String) -> HerdrError {
         switch self {
-        case .jumpFailed:
+        case .activationFailed, .jumpFailed:
             return self
         default:
             return .jumpFailed(paneId: paneId, message: localizedDescription, status: nil)
@@ -179,6 +226,8 @@ enum HerdrError: LocalizedError {
 
     var jumpLogMessage: String {
         switch self {
+        case .activationFailed(let bundleId, let reason):
+            return "[HerdCodeJumpError] activate bundleId=\(bundleId) failed: \(reason)"
         case .jumpFailed(let paneId, let message, _):
             return "[HerdCodeJumpError] focus paneId=\(paneId) failed: \(message)"
         default:

@@ -6,6 +6,7 @@ final class HerdCodePanelVisibilityTests: XCTestCase {
     func testJumpDoesNotHideVisiblePanel() async throws {
         let logger = TestJumpLogger()
         let service = HerdrService(
+            appActivator: FakeAppActivator {},
             jumpExecutor: FakeJumpExecutor { _ in },
             jumpLogger: logger
         )
