@@ -1,8 +1,13 @@
 import SwiftUI
 
-/// 메뉴바 드롭다운 전체 뷰
+private let kFontScale = "HerdCode.fontScale"
+private let fontScaleMin: Double = 0.8
+private let fontScaleMax: Double = 1.4
+private let fontScaleStep: Double = 0.1
+
 struct MenuBarView: View {
     @ObservedObject var monitor: StatusMonitor
+    @AppStorage(kFontScale) private var fontScale: Double = 1.0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -36,6 +41,22 @@ struct MenuBarView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Button { fontScale = max(fontScaleMin, fontScale - fontScaleStep) } label: {
+                Text("A").font(.system(size: 11))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("글자 크기 줄이기")
+            .disabled(fontScale <= fontScaleMin)
+
+            Button { fontScale = min(fontScaleMax, fontScale + fontScaleStep) } label: {
+                Text("A").font(.system(size: 15, weight: .medium))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .help("글자 크기 늘리기")
+            .disabled(fontScale >= fontScaleMax)
+
             Button {
                 Task { await monitor.refresh() }
             } label: {
@@ -65,7 +86,7 @@ struct MenuBarView: View {
                     emptyRow("agent 없음")
                 } else {
                     ForEach(monitor.state.herdrAgents) { agent in
-                        HerdrAgentRow(agent: agent)
+                        HerdrAgentRow(agent: agent, fontScale: fontScale)
                     }
                 }
             }
@@ -84,7 +105,7 @@ struct MenuBarView: View {
                     emptyRow("세션 없음")
                 } else {
                     ForEach(monitor.state.herdrSessions) { session in
-                        HerdrSessionRow(session: session)
+                        HerdrSessionRow(session: session, fontScale: fontScale)
                     }
                 }
             }
@@ -113,7 +134,7 @@ struct MenuBarView: View {
                     emptyRow("활성 세션 없음")
                 } else {
                     ForEach(monitor.state.opencodeSessions) { session in
-                        OpencodeSessionRow(session: session)
+                        OpencodeSessionRow(session: session, fontScale: fontScale)
                     }
                 }
             }
@@ -130,7 +151,7 @@ struct MenuBarView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     subSectionTitle("Todos", count: monitor.state.inProgressTodoCount, total: monitor.state.opencodeTodos.count)
                     ForEach(monitor.state.opencodeTodos.prefix(5)) { todo in
-                        TodoRow(todo: todo)
+                        TodoRow(todo: todo, fontScale: fontScale)
                     }
                 }
                 .padding(.horizontal, 12)
@@ -213,16 +234,19 @@ struct MenuBarView: View {
 
     private func emptyRow(_ text: String) -> some View {
         Text(text)
-            .font(.caption)
+            .font(.system(size: scaled(12), weight: .regular))
             .foregroundStyle(.tertiary)
             .padding(.vertical, 2)
     }
+
+    private func scaled(_ base: CGFloat) -> CGFloat { base * fontScale }
 }
 
 // MARK: - Row Views
 
 private struct HerdrAgentRow: View {
     let agent: HerdrAgent
+    let fontScale: Double
 
     var body: some View {
         HStack(spacing: 6) {
@@ -230,13 +254,13 @@ private struct HerdrAgentRow: View {
                 .fill(agent.status == .working ? Color.green : Color.gray.opacity(0.4))
                 .frame(width: 7, height: 7)
             Text(agent.agent)
-                .font(.callout)
+                .font(.system(size: 13 * fontScale))
             Spacer()
             Text(agent.status.label)
-                .font(.caption)
+                .font(.system(size: 11 * fontScale))
                 .foregroundStyle(agent.status == .working ? .green : .secondary)
             Text(shortPath(agent.cwd))
-                .font(.caption2)
+                .font(.system(size: 10 * fontScale))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
         }
@@ -250,17 +274,18 @@ private struct HerdrAgentRow: View {
 
 private struct HerdrSessionRow: View {
     let session: HerdrSession
+    let fontScale: Double
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: session.isRunning ? "terminal.fill" : "terminal")
-                .font(.caption)
+                .font(.system(size: 11 * fontScale))
                 .foregroundStyle(session.isRunning ? .primary : .tertiary)
             Text(session.name)
-                .font(.callout)
+                .font(.system(size: 13 * fontScale))
             Spacer()
             Text(session.isRunning ? "실행 중" : "중지됨")
-                .font(.caption2)
+                .font(.system(size: 10 * fontScale))
                 .foregroundStyle(session.isRunning ? .secondary : .tertiary)
         }
         .padding(.vertical, 2)
@@ -269,6 +294,7 @@ private struct HerdrSessionRow: View {
 
 private struct OpencodeSessionRow: View {
     let session: OpencodeSession
+    let fontScale: Double
 
     var body: some View {
         HStack(spacing: 6) {
@@ -276,16 +302,16 @@ private struct OpencodeSessionRow: View {
                 .fill(session.isRecentlyActive ? Color.blue : Color.gray.opacity(0.3))
                 .frame(width: 7, height: 7)
             Text(session.title)
-                .font(.callout)
+                .font(.system(size: 13 * fontScale))
                 .lineLimit(1)
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
                 Text(relativeTime(session.timeUpdated))
-                    .font(.caption2)
+                    .font(.system(size: 10 * fontScale))
                     .foregroundStyle(.tertiary)
                 if session.cost > 0 {
                     Text(String(format: "$%.4f", session.cost))
-                        .font(.caption2)
+                        .font(.system(size: 10 * fontScale))
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -304,13 +330,14 @@ private struct OpencodeSessionRow: View {
 
 private struct TodoRow: View {
     let todo: OpencodeTodo
+    let fontScale: Double
 
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             Text(todo.statusIcon)
-                .font(.caption)
+                .font(.system(size: 11 * fontScale))
             Text(todo.content)
-                .font(.caption)
+                .font(.system(size: 11 * fontScale))
                 .lineLimit(2)
                 .foregroundStyle(todo.status == "in_progress" ? .primary : .secondary)
         }
