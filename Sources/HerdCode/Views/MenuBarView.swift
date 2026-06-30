@@ -322,6 +322,8 @@ struct MenuBarView: View {
                     }
                 }
             }
+            .padding(.horizontal, 12)
+            .padding(.top, 2)
             .padding(.bottom, 6)
         }
     }
@@ -538,7 +540,6 @@ private struct ClaudeCodeSessionRow: View {
             }
         }
         .padding(.vertical, 3)
-        .padding(.horizontal, 12)
     }
 
     private func shortPath(_ path: String) -> String {
