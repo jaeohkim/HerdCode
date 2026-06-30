@@ -1,6 +1,13 @@
 import Foundation
 import AppKit
 
+protocol OpencodeProviding: Sendable {
+    func fetchRecentSessions(limit: Int) async throws -> [OpencodeSession]
+    func fetchTodos(for sessionIds: [String]) async throws -> [OpencodeTodo]
+}
+
+extension OpencodeService: OpencodeProviding {}
+
 @MainActor
 final class StatusMonitor: ObservableObject {
 
@@ -8,7 +15,9 @@ final class StatusMonitor: ObservableObject {
     @Published var lastError: String?
 
     private let herdr: HerdrService
-    private let opencode: OpencodeService
+    private let opencode: any OpencodeProviding
+    private let remoteTargets: [HerdrTarget]
+    private let remoteServiceFactory: @Sendable (HerdrTarget) -> HerdrService
 
     private var timer: Timer?
     private let pollInterval: TimeInterval
@@ -16,10 +25,30 @@ final class StatusMonitor: ObservableObject {
     private var previousOverallStatus: AgentStatus = .unknown
     private var previousWorkingCount: Int = 0
 
-    init(pollInterval: TimeInterval = 5.0, herdrService: HerdrService? = nil) {
+    init(
+        pollInterval: TimeInterval = 5.0,
+        herdrService: HerdrService? = nil,
+        targets: [HerdrTarget]? = nil,
+        remoteTargetConfig: RemoteTargetConfig = RemoteTargetConfig(),
+        opencodeService: (any OpencodeProviding)? = nil,
+        remoteServiceFactory: @escaping @Sendable (HerdrTarget) -> HerdrService = { target in
+            guard let remote = target.remote, let session = target.session else {
+                return HerdrService()
+            }
+            return HerdrService(
+                commandRunner: HerdrService.sshCommandRunner(
+                    remote: remote,
+                    session: session,
+                    herdrPath: target.herdrPath
+                )
+            )
+        }
+    ) {
         self.pollInterval = pollInterval
         self.herdr = herdrService ?? HerdrService()
-        self.opencode = OpencodeService()
+        self.opencode = opencodeService ?? OpencodeService()
+        self.remoteTargets = (targets ?? remoteTargetConfig.loadTargets()).filter { !$0.isLocal }
+        self.remoteServiceFactory = remoteServiceFactory
     }
 
     convenience init(herdrService: HerdrService, pollInterval: TimeInterval = 5.0) {
@@ -70,26 +99,54 @@ final class StatusMonitor: ObservableObject {
     }
 
     func refresh() async {
-        var herdrSessions:    [HerdrSession]    = state.herdrSessions
-        var herdrAgents:      [HerdrAgent]      = state.herdrAgents
+        var localSessions:    [HerdrSession]    = state.herdrSessions.filter { $0.targetLabel == HerdrTarget.local.label }
+        var localAgents:      [HerdrAgent]      = state.herdrAgents.filter { $0.targetLabel == HerdrTarget.local.label }
         var herdrWorkspaces:  [HerdrWorkspace]  = state.herdrWorkspaces
         var ocSessions:       [OpencodeSession] = state.opencodeSessions
         var ocTodos:          [OpencodeTodo]    = state.opencodeTodos
+        var remoteOpencodeSessions: [RemoteOpencodeSession] = []
         var errors:           [String]          = []
 
-        do { herdrSessions  = try await herdr.fetchSessions()            } catch { errors.append("herdr sessions: \(error.localizedDescription)") }
-        do { herdrAgents    = try await herdr.fetchAgents()              } catch { errors.append("herdr agents: \(error.localizedDescription)") }
+        do { localSessions  = localizedSessions(try await herdr.fetchSessions(), target: .local) } catch { errors.append("herdr sessions: \(error.localizedDescription)") }
+        do { localAgents    = localizedAgents(try await herdr.fetchAgents(), target: .local) } catch { errors.append("herdr agents: \(error.localizedDescription)") }
         do { herdrWorkspaces = try await herdr.fetchWorkspaces()         } catch { errors.append("herdr workspaces: \(error.localizedDescription)") }
         do { ocSessions     = try await opencode.fetchRecentSessions(limit: 10) } catch { errors.append("opencode sessions: \(error.localizedDescription)") }
 
         let activeSids = ocSessions.filter { $0.isActive }.map { $0.id }
         do { ocTodos = try await opencode.fetchTodos(for: activeSids)   } catch { errors.append("opencode todos: \(error.localizedDescription)") }
 
+        var herdrSessions = localSessions
+        var herdrAgents = localAgents
+
+        for target in remoteTargets {
+            let remoteService = remoteServiceFactory(target)
+
+            do {
+                let remoteSessions = localizedSessions(try await remoteService.fetchSessions(), target: target)
+                herdrSessions.append(contentsOf: remoteSessions)
+                remoteOpencodeSessions.append(
+                    contentsOf: remoteSessions.map {
+                        RemoteOpencodeSession(targetLabel: target.label, sessionId: $0.name, isRunning: $0.isRunning)
+                    }
+                )
+            } catch {
+                errors.append("\(target.label) herdr sessions: \(error.localizedDescription)")
+            }
+
+            do {
+                let remoteAgents = localizedAgents(try await remoteService.fetchAgents(), target: target)
+                herdrAgents.append(contentsOf: remoteAgents)
+            } catch {
+                errors.append("\(target.label) herdr agents: \(error.localizedDescription)")
+            }
+        }
+
         let newState = AppState(
             herdrSessions:    herdrSessions,
             herdrAgents:      herdrAgents,
             herdrWorkspaces:  herdrWorkspaces,
             opencodeSessions: ocSessions,
+            remoteOpencodeSessions: remoteOpencodeSessions,
             opencodeTodos:    ocTodos,
             lastUpdated:      Date()
         )
@@ -97,6 +154,31 @@ final class StatusMonitor: ObservableObject {
         detectChangesAndNotify(newState: newState)
         state = newState
         lastError = errors.isEmpty ? nil : errors.joined(separator: " | ")
+    }
+
+    private func localizedSessions(_ sessions: [HerdrSession], target: HerdrTarget) -> [HerdrSession] {
+        sessions.map {
+            var session = $0
+            session.targetLabel = target.label
+            return session
+        }
+    }
+
+    private func localizedAgents(_ agents: [HerdrAgent], target: HerdrTarget) -> [HerdrAgent] {
+        agents.map { agent in
+            let isLocalTarget = target.isLocal
+            return HerdrAgent(
+                agent: agent.agent,
+                agentStatus: agent.agentStatus,
+                cwd: agent.cwd,
+                focused: isLocalTarget ? agent.focused : false,
+                paneId: isLocalTarget ? agent.paneId : "",
+                tabId: agent.tabId,
+                workspaceId: agent.workspaceId,
+                agentSession: isLocalTarget ? agent.agentSession : nil,
+                targetLabel: target.label
+            )
+        }
     }
 
     private func detectChangesAndNotify(newState: AppState) {

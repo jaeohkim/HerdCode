@@ -17,6 +17,7 @@ struct MenuBarView: View {
                 herdrSection
                 Divider()
                 opencodeSection
+                remoteOpencodeSection
             }
             Divider()
             footerSection
@@ -74,20 +75,85 @@ struct MenuBarView: View {
     // MARK: - Herdr Section
 
     private var herdrSection: some View {
+        let allAgents = monitor.state.herdrAgents
+        let allSessions = monitor.state.herdrSessions
+
+        let localAgents = allAgents.filter { $0.targetLabel == "local" }
+        let localSessions = allSessions.filter { $0.targetLabel == "local" }
+
+        let remoteLabels: [String] = {
+            var seen = Set<String>()
+            var ordered: [String] = []
+            for a in allAgents where a.targetLabel != "local" {
+                if seen.insert(a.targetLabel).inserted { ordered.append(a.targetLabel) }
+            }
+            for s in allSessions where s.targetLabel != "local" {
+                if seen.insert(s.targetLabel).inserted { ordered.append(s.targetLabel) }
+            }
+            return ordered
+        }()
+
+        return VStack(alignment: .leading, spacing: 0) {
+            sectionTitle(
+                "Herdr",
+                count: allAgents.filter { $0.status == .working }.count,
+                total: allAgents.count + allSessions.count
+            )
+            .padding(.horizontal, 12)
+            .padding(.top, 6)
+            .padding(.bottom, 2)
+
+            targetBlock(
+                label: "LOCAL",
+                agents: localAgents,
+                sessions: localSessions,
+                isLocal: true
+            )
+
+            ForEach(remoteLabels, id: \.self) { label in
+                Rectangle()
+                    .fill(Color.primary.opacity(0.06))
+                    .frame(height: 1)
+                    .padding(.horizontal, 12)
+                targetBlock(
+                    label: "REMOTE · \(label)",
+                    agents: allAgents.filter { $0.targetLabel == label },
+                    sessions: allSessions.filter { $0.targetLabel == label },
+                    isLocal: false
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func targetBlock(
+        label: String,
+        agents: [HerdrAgent],
+        sessions: [HerdrSession],
+        isLocal: Bool
+    ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            sectionTitle("Herdr", count: monitor.state.herdrAgents.filter { $0.status == .working }.count, total: monitor.state.herdrAgents.count + monitor.state.herdrSessions.count)
+            subSectionTitle(label)
                 .padding(.horizontal, 12)
-                .padding(.top, 6)
+                .padding(.top, 4)
                 .padding(.bottom, 2)
 
             VStack(alignment: .leading, spacing: 4) {
-                subSectionTitle("Agents", count: monitor.state.herdrAgents.filter { $0.status == .working }.count, total: monitor.state.herdrAgents.count)
-                if monitor.state.herdrAgents.isEmpty {
+                subSectionTitle(
+                    "Agents",
+                    count: agents.filter { $0.status == .working }.count,
+                    total: agents.count
+                )
+                if agents.isEmpty {
                     emptyRow("agent 없음")
                 } else {
-                    ForEach(monitor.state.herdrAgents) { agent in
-                        HerdrAgentRow(agent: agent, fontScale: fontScale) {
-                            Task { await monitor.jumpToAgent(agent) }
+                    ForEach(agents) { agent in
+                        if isLocal {
+                            HerdrAgentRow(agent: agent, fontScale: fontScale) {
+                                Task { await monitor.jumpToAgent(agent) }
+                            }
+                        } else {
+                            HerdrAgentRow(agent: agent, fontScale: fontScale, onTap: nil)
                         }
                     }
                 }
@@ -102,11 +168,15 @@ struct MenuBarView: View {
                 .padding(.horizontal, 12)
 
             VStack(alignment: .leading, spacing: 4) {
-                subSectionTitle("Sessions", count: monitor.state.runningHerdrSessionCount, total: monitor.state.herdrSessions.count)
-                if monitor.state.herdrSessions.isEmpty {
+                subSectionTitle(
+                    "Sessions",
+                    count: sessions.filter { $0.isRunning }.count,
+                    total: sessions.count
+                )
+                if sessions.isEmpty {
                     emptyRow("세션 없음")
                 } else {
-                    ForEach(monitor.state.herdrSessions) { session in
+                    ForEach(sessions) { session in
                         HerdrSessionRow(session: session, fontScale: fontScale)
                     }
                 }
@@ -166,6 +236,67 @@ struct MenuBarView: View {
             .padding(.horizontal, 12)
             .padding(.top, 2)
             .padding(.bottom, 6)
+        }
+    }
+
+    // MARK: - Remote OpenCode Section
+
+    @ViewBuilder
+    private var remoteOpencodeSection: some View {
+        let remoteLabels: [String] = {
+            var seen = Set<String>()
+            var ordered: [String] = []
+            for s in monitor.state.remoteOpencodeSessions {
+                if seen.insert(s.targetLabel).inserted { ordered.append(s.targetLabel) }
+            }
+            return ordered
+        }()
+
+        ForEach(remoteLabels, id: \.self) { label in
+            let sessions = monitor.state.remoteOpencodeSessions.filter { $0.targetLabel == label }
+            Divider()
+            VStack(alignment: .leading, spacing: 0) {
+                sectionTitle(
+                    "OPENCODE · \(label)",
+                    count: sessions.filter { $0.isRunning }.count,
+                    total: sessions.count
+                )
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+                .padding(.bottom, 2)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    subSectionTitle(
+                        "Sessions",
+                        count: sessions.filter { $0.isRunning }.count,
+                        total: sessions.count
+                    )
+                    if sessions.isEmpty {
+                        emptyRow("세션 없음")
+                    } else {
+                        ForEach(sessions) { session in
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(session.isRunning ? Color.blue : Color.gray.opacity(0.3))
+                                    .frame(width: 7, height: 7)
+                                Text(session.sessionId)
+                                    .font(.system(size: 13 * fontScale))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Text(session.isRunning ? "실행 중" : "중지됨")
+                                    .font(.system(size: 10 * fontScale))
+                                    .foregroundStyle(session.isRunning ? .secondary : .tertiary)
+                            }
+                            .padding(.vertical, 2)
+                            .disabled(true)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 2)
+                .padding(.bottom, 6)
+            }
         }
     }
 

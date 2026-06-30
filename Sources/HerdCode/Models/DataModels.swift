@@ -29,16 +29,36 @@ enum AgentStatus: String, Codable {
 
 // MARK: - Herdr Models
 
+struct HerdrTarget: Codable, Equatable, Identifiable {
+    let label: String
+    let isLocal: Bool
+    let remote: String?
+    let session: String?
+    let herdrPath: String?
+
+    var id: String { label }
+
+    static let local = HerdrTarget(label: "local", isLocal: true, remote: nil, session: nil, herdrPath: nil)
+}
+
 /// herdr session list 결과
 struct HerdrSession: Identifiable, Codable {
     let name: String
     let status: String   // "running" | "stopped"
     let directory: String
     let socket: String
+    var targetLabel: String = "local"
 
-    var id: String { name }
+    var id: String { "\(targetLabel):\(name)" }
 
     var isRunning: Bool { status == "running" }
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case status
+        case directory
+        case socket
+    }
 }
 
 /// herdr agent list 결과 (JSON 래퍼)
@@ -62,8 +82,9 @@ struct HerdrAgent: Identifiable, Codable {
     let tabId: String
     let workspaceId: String
     let agentSession: HerdrAgentSession?
+    var targetLabel: String = "local"
 
-    var id: String { paneId }
+    var id: String { "\(targetLabel):\(paneId)" }
 
     var status: AgentStatus {
         AgentStatus(rawValue: agentStatus) ?? .unknown
@@ -147,6 +168,14 @@ struct OpencodeSession: Identifiable {
     }
 }
 
+struct RemoteOpencodeSession: Equatable, Identifiable {
+    let targetLabel: String
+    let sessionId: String
+    let isRunning: Bool
+
+    var id: String { "\(targetLabel):\(sessionId)" }
+}
+
 /// opencode DB todo 테이블 행
 struct OpencodeTodo: Identifiable {
     let sessionId: String
@@ -174,6 +203,7 @@ struct AppState {
     var herdrAgents: [HerdrAgent] = []
     var herdrWorkspaces: [HerdrWorkspace] = []
     var opencodeSessions: [OpencodeSession] = []
+    var remoteOpencodeSessions: [RemoteOpencodeSession] = []
     var opencodeTodos: [OpencodeTodo] = []
     var lastUpdated: Date = Date()
 
