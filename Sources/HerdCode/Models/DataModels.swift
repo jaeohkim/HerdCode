@@ -154,7 +154,7 @@ struct ClaudeCodeSession: Identifiable {
     let startedAt: Date
     let updatedAt: Date
     let version: String
-    var title: String       // ai-title에서 추출; 없으면 sessionId 앞 8자
+    let title: String       // ai-title에서 추출; 없으면 sessionId 앞 8자
 
     var id: String { sessionId }
 
