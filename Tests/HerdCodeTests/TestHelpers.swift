@@ -69,3 +69,13 @@ final class LockedFlag: @unchecked Sendable {
         return storage
     }
 }
+
+struct FakeClaudeCodeService: ClaudeCodeProviding, @unchecked Sendable {
+    var sessions: [ClaudeCodeSession]
+    var error: Error?
+
+    func fetchSessions() async throws -> [ClaudeCodeSession] {
+        if let error { throw error }
+        return sessions
+    }
+}
