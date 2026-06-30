@@ -212,4 +212,8 @@ struct AppState {
         }
         return icon
     }
+
+    func todosFor(_ session: OpencodeSession) -> [OpencodeTodo] {
+        opencodeTodos.filter { $0.sessionId == session.id }
+    }
 }

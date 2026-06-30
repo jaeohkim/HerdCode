@@ -143,31 +143,29 @@ struct MenuBarView: View {
                                 ? { Task { await monitor.jumpToSession(session) } }
                                 : nil
                         )
+                        let todos = monitor.state.todosFor(session)
+                        if !todos.isEmpty {
+                            HStack(alignment: .top, spacing: 0) {
+                                Rectangle()
+                                    .fill(Color.primary.opacity(0.12))
+                                    .frame(width: 1.5)
+                                    .padding(.leading, 6)
+                                    .padding(.vertical, 1)
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ForEach(todos) { todo in
+                                        TodoRow(todo: todo, fontScale: fontScale)
+                                            .padding(.leading, 6)
+                                    }
+                                }
+                            }
+                            .padding(.leading, 8)
+                        }
                     }
                 }
             }
             .padding(.horizontal, 12)
             .padding(.top, 2)
-            .padding(.bottom, 4)
-
-            if !monitor.state.opencodeTodos.isEmpty {
-                Rectangle()
-                    .fill(Color.primary.opacity(0.06))
-                    .frame(height: 1)
-                    .padding(.horizontal, 12)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    subSectionTitle("Todos", count: monitor.state.inProgressTodoCount, total: monitor.state.opencodeTodos.count)
-                    ForEach(monitor.state.opencodeTodos.prefix(5)) { todo in
-                        TodoRow(todo: todo, fontScale: fontScale)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.top, 4)
-                .padding(.bottom, 6)
-            } else {
-                Spacer().frame(height: 2)
-            }
+            .padding(.bottom, 6)
         }
     }
 
@@ -362,11 +360,12 @@ private struct TodoRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 6) {
             Text(todo.statusIcon)
-                .font(.system(size: 11 * fontScale))
+                .font(.system(size: 10.5 * fontScale))
+                .foregroundStyle(.tertiary)
             Text(todo.content)
-                .font(.system(size: 11 * fontScale))
+                .font(.system(size: 10.5 * fontScale))
                 .lineLimit(2)
-                .foregroundStyle(todo.status == "in_progress" ? .primary : .secondary)
+                .foregroundStyle(todo.status == "in_progress" ? .secondary : .tertiary)
         }
         .padding(.vertical, 1)
     }

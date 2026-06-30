@@ -8,6 +8,7 @@ let package = Package(
         .executableTarget(
             name: "HerdCode",
             path: "Sources/HerdCode",
+            exclude: ["AGENTS.md", "Services/AGENTS.md"],
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
             ]
@@ -15,7 +16,8 @@ let package = Package(
         .testTarget(
             name: "HerdCodeTests",
             dependencies: ["HerdCode"],
-            path: "Tests/HerdCodeTests"
+            path: "Tests/HerdCodeTests",
+            exclude: ["AGENTS.md"]
         ),
     ]
 )

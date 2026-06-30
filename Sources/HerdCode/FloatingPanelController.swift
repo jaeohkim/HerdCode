@@ -2,12 +2,51 @@ import AppKit
 import SwiftUI
 import Combine
 
+struct ScreenGeometry {
+    let visibleFrame: NSRect
+}
+
+enum PanelPlacement {
+    static let windowMargin: CGFloat = 12
+    static let panelWidth: CGFloat = 340
+
+    static func resolveFrame(
+        savedOrigin: NSPoint?,
+        height: CGFloat,
+        screen: ScreenGeometry
+    ) -> NSRect {
+        let size = NSSize(width: panelWidth, height: height)
+        guard let origin = savedOrigin else {
+            return topRightFrame(height: height, screen: screen)
+        }
+        guard isFullyOnScreen(origin: origin, size: size, screen: screen) else {
+            return topRightFrame(height: height, screen: screen)
+        }
+        return NSRect(origin: origin, size: size)
+    }
+
+    static func isFullyOnScreen(origin: NSPoint, size: NSSize, screen: ScreenGeometry) -> Bool {
+        let panelRect = NSRect(origin: origin, size: size)
+        let safeArea = screen.visibleFrame.insetBy(dx: windowMargin, dy: windowMargin)
+        return panelRect.minX >= safeArea.minX
+            && panelRect.minY >= safeArea.minY
+            && panelRect.maxX <= safeArea.maxX + windowMargin * 2
+            && panelRect.maxY <= safeArea.maxY + windowMargin * 2
+    }
+
+    static func topRightFrame(height: CGFloat, screen: ScreenGeometry) -> NSRect {
+        let visible = screen.visibleFrame
+        let x = visible.maxX - panelWidth - windowMargin
+        let y = visible.maxY - height - windowMargin
+        return NSRect(x: x, y: y, width: panelWidth, height: height)
+    }
+}
+
 @MainActor
 final class FloatingPanelController {
     private enum Constants {
         static let windowOriginKey = "HerdCode.windowOrigin"
-        static let windowMargin: CGFloat = 12
-        static let panelWidth: CGFloat = 340
+        static let panelWidth: CGFloat = PanelPlacement.panelWidth
         static let panelMaxHeightRatio: CGFloat = 0.85
     }
 
@@ -15,6 +54,7 @@ final class FloatingPanelController {
     private(set) var window: NSWindow?
     private var hostingController: NSHostingController<MenuBarView>?
     private var cancellables = Set<AnyCancellable>()
+    private var moveObserver: NSObjectProtocol?
 
     init(monitor: StatusMonitor) {
         self.monitor = monitor
@@ -68,10 +108,18 @@ final class FloatingPanelController {
         window.level = .floating
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
-        window.isMovableByWindowBackground = false
+        window.isMovableByWindowBackground = true
         window.isOpaque = false
         window.backgroundColor = .clear
-        installDragHandle(in: window)
+
+        moveObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification,
+            object: window,
+            queue: .main
+        ) { [weak self, weak window] _ in
+            guard let self, let window else { return }
+            MainActor.assumeIsolated { self.saveOrigin(window) }
+        }
 
         return window
     }
@@ -97,53 +145,30 @@ final class FloatingPanelController {
 
     private func targetWindowFrame() -> NSRect {
         let height = currentPanelHeight()
-        let size = NSSize(width: Constants.panelWidth, height: height)
-        if let origin = restoredOrigin(), isOnScreen(origin: origin, size: size) {
-            return NSRect(origin: origin, size: size)
-        }
-        return topRightFrame(height: height)
+        let screen = screenForMouse() ?? NSScreen.main ?? NSScreen.screens[0]
+        let geometry = ScreenGeometry(visibleFrame: screen.visibleFrame)
+        return PanelPlacement.resolveFrame(
+            savedOrigin: restoredOrigin(),
+            height: height,
+            screen: geometry
+        )
     }
 
-    private func saveOrigin(_ window: NSWindow) {
+    func saveOrigin(_ window: NSWindow) {
         UserDefaults.standard.set(
             NSStringFromPoint(window.frame.origin),
             forKey: Constants.windowOriginKey
         )
     }
 
-    private func restoredOrigin() -> NSPoint? {
+    func restoredOrigin() -> NSPoint? {
         guard let str = UserDefaults.standard.string(forKey: Constants.windowOriginKey),
               !str.isEmpty else { return nil }
         return NSPointFromString(str)
     }
 
-    private func isOnScreen(origin: NSPoint, size: NSSize) -> Bool {
-        let center = NSPoint(x: origin.x + size.width / 2, y: origin.y + size.height / 2)
-        return NSScreen.screens.contains { $0.frame.contains(center) }
-    }
-
-    private func topRightFrame(height: CGFloat) -> NSRect {
-        let screen = screenForMouse() ?? NSScreen.main ?? NSScreen.screens[0]
-        let visible = screen.visibleFrame
-        let x = visible.maxX - Constants.panelWidth - Constants.windowMargin
-        let y = visible.maxY - height - Constants.windowMargin
-        return NSRect(x: x, y: y, width: Constants.panelWidth, height: height)
-    }
-
     private func screenForMouse() -> NSScreen? {
         let loc = NSEvent.mouseLocation
         return NSScreen.screens.first { NSMouseInRect(loc, $0.frame, false) }
-    }
-
-    private func installDragHandle(in window: NSWindow) {
-        guard let contentView = window.contentView else { return }
-        let handle = DragHandleView(frame: NSRect(
-            x: 0,
-            y: contentView.bounds.height - 40,
-            width: max(0, contentView.bounds.width - 50),
-            height: 40
-        ))
-        handle.autoresizingMask = [.width, .minYMargin]
-        contentView.addSubview(handle, positioned: .above, relativeTo: nil)
     }
 }
