@@ -144,6 +144,27 @@ struct HerdrWorkspace: Identifiable, Codable {
     }
 }
 
+// MARK: - ClaudeCode Models
+
+struct ClaudeCodeSession: Identifiable {
+    let pid: Int
+    let sessionId: String
+    let cwd: String
+    let status: String      // "busy" | "idle"
+    let startedAt: Date
+    let updatedAt: Date
+    let version: String
+    var title: String       // ai-title에서 추출; 없으면 sessionId 앞 8자
+
+    var id: String { sessionId }
+
+    var isBusy: Bool { status == "busy" }
+
+    var shortSessionId: String { String(sessionId.prefix(8)) }
+
+    var displayTitle: String { title.isEmpty ? shortSessionId : title }
+}
+
 // MARK: - OpenCode Models
 
 /// opencode DB session 테이블 행
@@ -205,6 +226,7 @@ struct AppState {
     var opencodeSessions: [OpencodeSession] = []
     var remoteOpencodeSessions: [RemoteOpencodeSession] = []
     var opencodeTodos: [OpencodeTodo] = []
+    var claudeCodeSessions: [ClaudeCodeSession] = []
     var lastUpdated: Date = Date()
 
     /// 전체 agent 중 working 상태인 것 수
@@ -225,6 +247,10 @@ struct AppState {
     /// 전체 진행 중 TODO 수
     var inProgressTodoCount: Int {
         opencodeTodos.filter { $0.status == "in_progress" }.count
+    }
+
+    var busyClaudeCodeCount: Int {
+        claudeCodeSessions.filter { $0.isBusy }.count
     }
 
     /// 메뉴바 아이콘에 표시할 전체 상태
