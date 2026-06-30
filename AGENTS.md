@@ -116,6 +116,13 @@ swift test --filter TerminalJumpResolverTests
 swift package clean
 ```
 
+## REFERENCES
+
+- **herdr 공식 문서**: https://herdr.dev/ — CLI 레퍼런스, 세션/소켓 구조, remote attach 동작 등 herdr 관련 모든 내용은 이 문서를 우선 참조.
+  - CLI 레퍼런스: https://herdr.dev/docs/cli-reference/
+  - Remote/SSH 동작: https://herdr.dev/docs/persistence-remote/
+  - Socket API: https://herdr.dev/docs/socket-api/
+
 ## NOTES
 
 - herdr 바이너리가 `/opt/homebrew/bin/herdr`에 없으면 `HerdrError.herdrNotFound` 발생.
