@@ -187,6 +187,7 @@ struct MenuBarView: View {
             .padding(.top, 4)
             .padding(.bottom, 6)
         }
+        .background(isLocal ? Color.orange.opacity(0.07) : Color.blue.opacity(0.07))
     }
 
     // MARK: - OpenCode Section
@@ -239,6 +240,7 @@ struct MenuBarView: View {
             .padding(.top, 2)
             .padding(.bottom, 6)
         }
+        .background(Color.orange.opacity(0.07))
     }
 
     // MARK: - Remote OpenCode Section
@@ -299,6 +301,7 @@ struct MenuBarView: View {
                 .padding(.top, 2)
                 .padding(.bottom, 6)
             }
+            .background(Color.blue.opacity(0.07))
         }
     }
 
@@ -326,6 +329,7 @@ struct MenuBarView: View {
             .padding(.top, 2)
             .padding(.bottom, 6)
         }
+        .background(Color.orange.opacity(0.07))
     }
 
     // MARK: - Footer
