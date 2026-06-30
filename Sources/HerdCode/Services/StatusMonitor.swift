@@ -16,6 +16,7 @@ final class StatusMonitor: ObservableObject {
 
     private let herdr: HerdrService
     private let opencode: any OpencodeProviding
+    private let claudeCode: any ClaudeCodeProviding
     private let remoteTargets: [HerdrTarget]
     private let remoteServiceFactory: @Sendable (HerdrTarget) -> HerdrService
 
@@ -31,6 +32,7 @@ final class StatusMonitor: ObservableObject {
         targets: [HerdrTarget]? = nil,
         remoteTargetConfig: RemoteTargetConfig = RemoteTargetConfig(),
         opencodeService: (any OpencodeProviding)? = nil,
+        claudeCodeService: (any ClaudeCodeProviding)? = nil,
         remoteServiceFactory: @escaping @Sendable (HerdrTarget) -> HerdrService = { target in
             guard let remote = target.remote, let session = target.session else {
                 return HerdrService()
@@ -47,6 +49,7 @@ final class StatusMonitor: ObservableObject {
         self.pollInterval = pollInterval
         self.herdr = herdrService ?? HerdrService()
         self.opencode = opencodeService ?? OpencodeService()
+        self.claudeCode = claudeCodeService ?? ClaudeCodeService()
         self.remoteTargets = (targets ?? remoteTargetConfig.loadTargets()).filter { !$0.isLocal }
         self.remoteServiceFactory = remoteServiceFactory
     }
@@ -104,6 +107,7 @@ final class StatusMonitor: ObservableObject {
         var herdrWorkspaces:  [HerdrWorkspace]  = state.herdrWorkspaces
         var ocSessions:       [OpencodeSession] = state.opencodeSessions
         var ocTodos:          [OpencodeTodo]    = state.opencodeTodos
+        var ccSessions:       [ClaudeCodeSession] = state.claudeCodeSessions
         var remoteOpencodeSessions: [RemoteOpencodeSession] = []
         var errors:           [String]          = []
 
@@ -114,6 +118,12 @@ final class StatusMonitor: ObservableObject {
 
         let activeSids = ocSessions.filter { $0.isActive }.map { $0.id }
         do { ocTodos = try await opencode.fetchTodos(for: activeSids)   } catch { errors.append("opencode todos: \(error.localizedDescription)") }
+
+        do {
+            ccSessions = try await claudeCode.fetchSessions()
+        } catch {
+            errors.append("claudeCode: \(error.localizedDescription)")
+        }
 
         var herdrSessions = localSessions
         var herdrAgents = localAgents
@@ -148,6 +158,7 @@ final class StatusMonitor: ObservableObject {
             opencodeSessions: ocSessions,
             remoteOpencodeSessions: remoteOpencodeSessions,
             opencodeTodos:    ocTodos,
+            claudeCodeSessions: ccSessions,
             lastUpdated:      Date()
         )
 
