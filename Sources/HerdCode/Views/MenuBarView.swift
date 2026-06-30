@@ -18,6 +18,8 @@ struct MenuBarView: View {
                 Divider()
                 opencodeSection
                 remoteOpencodeSection
+                Divider()
+                claudeCodeSection
             }
             Divider()
             footerSection
@@ -300,6 +302,30 @@ struct MenuBarView: View {
         }
     }
 
+    // MARK: - Claude Code Section
+
+    @ViewBuilder
+    private var claudeCodeSection: some View {
+        let sessions = monitor.state.claudeCodeSessions
+        let busyCount = monitor.state.busyClaudeCodeCount
+        VStack(alignment: .leading, spacing: 0) {
+            sectionTitle("Claude Code", count: busyCount, total: sessions.count)
+                .padding(.horizontal, 12)
+                .padding(.top, 6)
+                .padding(.bottom, 2)
+            VStack(alignment: .leading, spacing: 4) {
+                if sessions.isEmpty {
+                    emptyRow("활성 세션 없음")
+                } else {
+                    ForEach(sessions) { session in
+                        ClaudeCodeSessionRow(session: session, fontScale: fontScale)
+                    }
+                }
+            }
+            .padding(.bottom, 6)
+        }
+    }
+
     // MARK: - Footer
 
     private var footerSection: some View {
@@ -481,6 +507,42 @@ private struct OpencodeSessionRow: View {
         if diff < 3600 { return "\(diff / 60)분 전" }
         if diff < 86400 { return "\(diff / 3600)시간 전" }
         return "\(diff / 86400)일 전"
+    }
+}
+
+private struct ClaudeCodeSessionRow: View {
+    let session: ClaudeCodeSession
+    let fontScale: Double
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(session.isBusy ? Color.green : Color.gray.opacity(0.3))
+                .frame(width: 7, height: 7)
+
+            Text(session.displayTitle)
+                .font(.system(size: 13 * fontScale))
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(session.isBusy ? "작업 중" : "대기 중")
+                    .font(.system(size: 11 * fontScale))
+                    .foregroundStyle(session.isBusy ? Color.green : Color.secondary)
+                Text(shortPath(session.cwd))
+                    .font(.system(size: 10 * fontScale))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 3)
+        .padding(.horizontal, 12)
+    }
+
+    private func shortPath(_ path: String) -> String {
+        path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
     }
 }
 
