@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: StatusMonitor?
     private var cancellables = Set<AnyCancellable>()
     private var globalKeyMonitor: Any?
+    private var localKeyMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 독(Dock)에 아이콘 표시하지 않음
@@ -36,6 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor?.stop()
         cancellables.removeAll()
         if let m = globalKeyMonitor { NSEvent.removeMonitor(m) }
+        if let m = localKeyMonitor  { NSEvent.removeMonitor(m) }
     }
 
     // MARK: - Status Item
@@ -67,14 +69,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Global Hotkey (⌥Space)
 
     private func setupGlobalHotKey() {
-        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            // ⌥Space: keyCode 49 = Space, modifierFlags must be exactly .option
+        let handler: (NSEvent) -> Void = { [weak self] event in
             guard event.keyCode == 49,
                   event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .option
             else { return }
             DispatchQueue.main.async {
                 self?.panelController?.toggle()
             }
+        }
+
+        globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            handler(event)
+        }
+
+        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard event.keyCode == 49,
+                  event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .option
+            else { return event }
+            DispatchQueue.main.async {
+                self.panelController?.toggle()
+            }
+            return nil
         }
     }
 }
